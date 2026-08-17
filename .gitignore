@@ -1,0 +1,22 @@
+# CLion / CMake build artifacts
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+*.cmake
+!CMakeLists.txt
+
+# Compiled binaries / object files
+*.o
+*.out
+*.exe
+*.obj
+
+treasure_hunt
+
+# CLion project settings (IDE-specific, not needed by others)
+.idea/
+
+# macOS
+.DS_Store
