@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define MAX_CAPACITY 10 //Macros are used to define constants
+#define MAX_CAPACITY 10
 
 typedef struct Location
 {
@@ -16,10 +16,8 @@ typedef struct Treasure
     struct Location loc;
 }treasure;
 
-treasure storage[MAX_CAPACITY];
-treasure *treasures= &storage[0];
-
 int current_size = 0,num_treasures;
+
 
 void addDetails(int x, int y ,char name[50],  treasure *array, int index)
 {
@@ -36,16 +34,20 @@ void calculate_and_save_distance(location player_loc, treasure *ptr)
 
 
 
-void add_bonus_treasure(treasure bonus, treasure *array, int *size)
-{
-    if (*size>=MAX_CAPACITY)
-    {
+void add_bonus_treasure(treasure bonus, treasure **pptr, int *size){
+    if (*size>=MAX_CAPACITY){
         printf("Map capacity full!");
         return;
     }
-    array[(*size)]=bonus;
+  treasure *temp = (treasure*)realloc(*pptr,(*size +1)*sizeof(treasure));
+    if (temp==NULL)
+    {
+        printf("Memory Allocation Failed!\n");
+        return;
+    }
+    *pptr=temp;
+    (*pptr)[*size]=bonus;
     (*size)++;
-
 }
 
 
@@ -65,6 +67,31 @@ void get_nearest_treasure(treasure *array, int size, treasure **closest_treasure
     printf("\nNearest Treasure is: %s\n",(*closest_treasure)->name);
     printf("distance: %d occurs at (%d,%d).\n",(*closest_treasure)->distance,(*closest_treasure)->loc.x,(*closest_treasure)->loc.y);
 }
+void transform_player_location(int matrix[2][2], location *player_location)
+{
+    for (int i = 0 ; i<2  ;i++)
+    {
+        for (int j = 0 ; j<2 ; j++)
+        {
+            printf("Enter the value of matrix at (%d,%d): ",i,j);
+            scanf("%d",&matrix[i][j]);
+        }
+    }
+
+    int vector[2]={player_location->x, player_location->y};
+    int result[2]={0,0};
+    for (int m = 0 ; m<2 ; m++)
+    {
+        for (int n = 0 ; n<2 ; n++)
+        {
+            result[m]+=matrix[m][n]*vector[n];
+        }
+    }
+
+    player_location->x=result[0];
+    player_location->y=result[1];
+
+};
 
 
 
@@ -94,13 +121,13 @@ void printDetails(treasure *array)
         printf("location is (%d,%d)\n",array[m].loc.x,array[m].loc.y);
         printf("distance: %d\n",array[m].distance);
     }
-    get_nearest_treasure(treasures, current_size, &treasures);
+    get_nearest_treasure(array, current_size, &array);
 }
 
 int main()
 {
 
-    int x=0,y=0,startX,startY;
+    int x=0,y=0;
     char name[50];
 
     location player_loc;
@@ -108,8 +135,13 @@ int main()
 
     printf("Enter the Number of treasures: ");
     scanf("%d",&num_treasures);
-    if (num_treasures<=5)
+    treasure *treasures= (treasure*)malloc(num_treasures*sizeof(treasure));
+    if (treasures==NULL)
     {
+        printf("Memory Allocation Failed!");
+        exit(1);
+    }
+
         for (int i = 0 ; i<num_treasures; i++)
         {
             do
@@ -156,18 +188,25 @@ int main()
             bonus.loc.y=y;
             calculate_and_save_distance(player_loc,&bonus);
             strcpy(bonus.name,name);
-            add_bonus_treasure(bonus,treasures,&current_size);
+            add_bonus_treasure(bonus,&treasures,&current_size);
             if (ans!='y')
             {
                 break;
             }
         }
         printDetails(treasures);
-    }
-    else
+
+    int transform[2][2];
+    transform_player_location(transform,&player_loc);
+    for (int i = 0 ; i<current_size ; i++)
     {
-        printf("Number of treasures must be from 1 to 5 only.");
+        calculate_and_save_distance(player_loc,&treasures[i]);
     }
+
+    printf("\nUpdated Distances after transform: \n");
+    printDetails(treasures);
+
+    free(treasures);
 
     return 0;
 }
