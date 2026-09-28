@@ -1,437 +1,675 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-int current_size = 0;
+#include <stdbool.h>
+
+
+//defnitions
+#define NUM_TREASURES 5
+#define GRID_SIZE 10
+#define NAME_SIZE 50
+
+//data structures
 typedef struct Location
 {
     int x;
     int y;
-}location;
+} location;
+
+
 typedef struct Treasure
 {
-    char name[50];
+    char name[NAME_SIZE];
     int distance;
-    struct Location loc;
-}treasure;
-struct Node
+    location loc;
+} treasure;
+
+//linked-list
+typedef struct Node
 {
-    treasure treasure;
+    location player_loc;
+    bool collected;
     struct Node *next;
-    struct Node *prev;
-};
-struct Node *head=NULL,*tail=NULL;
-struct Node* create_node(treasure t)
+} Node;
+
+
+//global stacks
+treasure treasure_stack[NUM_TREASURES];
+int treasure_top = -1;
+
+
+/* Backup of the original treasures.
+   Used by RESET to reconstruct the treasure stack. */
+treasure original_treasures[NUM_TREASURES];
+
+
+/* Array stack containing collected treasures */
+treasure collected_treasures[NUM_TREASURES];
+int collected_top = -1;
+Node *position_top = NULL;
+location player_location;
+bool game_started = false;
+
+Node *create_node(location player_loc, bool collected)
 {
-    struct Node *node = (struct Node *)malloc(sizeof(struct Node));
-    if (node==NULL)
+    Node *node = (Node *)malloc(sizeof(Node));
+
+    if (node == NULL)
     {
-        printf("memory allocation failed!.\n");
-        exit(1);
+        printf("Memory allocation failed.\n");
+        exit(EXIT_FAILURE);
     }
-    current_size++;
-    node->treasure=t;
-    node->next=NULL;
-    node->prev=NULL;
+
+    node->player_loc = player_loc;
+    node->collected = collected;
+    node->next = NULL;
+
     return node;
 }
-void calculate_and_save_distance(location *player_loc, int position)
+void push_player_position(location player_loc, bool collected)
 {
-    int count = 0;
-    struct Node *temp = head;
-    while (temp!=NULL)
+    Node *new_node = create_node(player_loc, collected);
+
+    new_node->next = position_top;
+    position_top = new_node;
+}
+bool pop_player_position(location *player_loc, bool *collected)
+{
+    if (position_top == NULL)
     {
-        if (count==position)
-        {
-            temp->treasure.distance = abs(player_loc->x-temp->treasure.loc.x) + abs(player_loc->y-temp->treasure.loc.y);
-            break;
-        }
-        count++;
-        temp = temp->next;
+        return false;
     }
 
-}
-void insert_at_beg(treasure t)
-{
-    struct Node *newNode = create_node(t);
-    if (head==NULL)
-    {
-        head=tail=newNode;
-        return;
-    }
-    head->prev = newNode;
-    newNode->next=head;
-    head = newNode;
-}
-void insert_at_end(treasure t)
-{
-    struct Node *newNode = create_node(t);
-    tail->next=newNode;
-    newNode->prev=tail;
-    tail=newNode;
+    Node *temp = position_top;
 
-}
-int insert_at_pos(treasure t, int pos)
-{
-    if (pos > current_size)
-    {
-        printf("Position greater than last index!.\n");
-        if (head==NULL)
-        {
-            printf("List is empty. Adding to index 0.\n");
-            insert_at_beg(t);
-            return pos;
-        }
-        printf("DO you want to Add to last index?\n");
-        char ans;
-        scanf(" %c",&ans);
-        if (ans!='y') return -1;
-        insert_at_end(t);
-        return current_size-1;
-    }
-    if (pos < 0)
-    {
-        printf("Invalid position.");
-        return -1;
-    }
-    if (head==NULL && tail==NULL)
-    {
-        printf("List is empty. Adding treasure to index 0.\n");
-        struct Node *newNode = create_node(t);
-        head = tail = newNode;
-        return current_size-1;
-    }
-    if (pos==0)
-    {
-        insert_at_beg(t);
-        return pos;
-    }
-    struct Node *newNode = create_node(t);
-    int index_count = 0;
-    struct Node *iterator=head;
-    while (iterator!=NULL)
-    {
-        if (index_count==pos-1)
-        {
-            struct Node *old_next = iterator->next;   // capture BEFORE overwriting
-            newNode->prev=iterator;
-            newNode->next=iterator->next;
-            iterator->next=newNode;
-            if (old_next != NULL)
-                old_next->prev = newNode;
-            else
-                tail = newNode;
-            return index_count;
-        }
-        index_count++;
-        iterator=iterator->next;
-    }
-    return -1;
-}
-void delete_from_beg()
-{
-    if (current_size==1)
-    {
-        printf("List size 1. Deleting list.");
-        free(head);
-        head=NULL;
-        tail=NULL;
-        current_size--;
-        return;
-    }
-    struct Node *temp = head;
-    head = temp->next;
-    head->prev=NULL;
-    current_size--;
+    *player_loc = temp->player_loc;
+    *collected = temp->collected;
+
+    position_top = position_top->next;
+
     free(temp);
+
+    return true;
 }
-void delete_from_end()
+bool peek_player_position(location *player_loc)
 {
-    if (current_size==1)
+    if (position_top == NULL)
     {
-        printf("List size 1. Deleting list.");
-        free(head);
-        head=NULL;
-        tail = NULL;
-        current_size--;
-        return;
+        return false;
     }
-    struct Node *temp = tail;
-    tail = temp->prev;
-    temp->prev->next=NULL;
-    current_size--;
-    free(temp);
+
+    *player_loc = position_top->player_loc;
+
+    return true;
 }
-void delete_from_pos(int pos)
+void clear_position_stack(void)
 {
-    if (head==NULL)
+    Node *temp;
+
+    while (position_top != NULL)
     {
-        printf("List is empty.");
-        return;
-    }
-    if (pos==0)
-    {
-        delete_from_beg();
-        return;
-    }
-    if (pos==current_size-1)
-    {
-        delete_from_end();
-        return;
-    }
-    struct Node *temp_from_head = head;
-    struct Node *temp_from_tail = tail;
-    int head_counter = 0;
-    int tail_counter = current_size-1;
-    while (temp_from_head!=NULL || temp_from_tail !=NULL)
-    {
-        if (head_counter > tail_counter) break;
-        if (head_counter==pos)
-        {
-            temp_from_head->prev->next = temp_from_head->next;
-            temp_from_head->next->prev = temp_from_head->prev;
-            current_size--;
-            free(temp_from_head);
-            return;
-        }
-        if (tail_counter==pos)
-        {
-            temp_from_tail->prev->next = temp_from_tail->next;
-            temp_from_tail->next->prev = temp_from_tail->prev;
-            current_size--;
-            free(temp_from_tail);
-            return;
-        }
-        head_counter++;
-        tail_counter--;
-        temp_from_head = temp_from_head->next;
-        temp_from_tail= temp_from_tail->prev;
+        temp = position_top;
+        position_top = position_top->next;
+        free(temp);
     }
 }
-void add_bonus_treasure(treasure bonus_treasure){
-    if (head==NULL)
-    {
-        printf("List is empty. Adding bonus treasure to index 0.\n");
-        insert_at_beg(bonus_treasure);
-        return;
-    }
-    insert_at_end(bonus_treasure);
-}
-void transform_player_location(int matrix[2][2], location *player_loc)
+bool is_treasure_stack_empty(void)
 {
-    struct Node *temp=head;
-    int position = 0;
-    while (temp!=NULL)
+    return treasure_top == -1;
+}
+bool is_treasure_stack_full(void)
+{
+    return treasure_top == NUM_TREASURES - 1;
+}
+bool push_treasure(treasure t)
+{
+    if (is_treasure_stack_full())
     {
-        location old_player_loc = temp->treasure.loc;
-        int vector[2]={old_player_loc.x, old_player_loc.y};
-        int result[2]={0,0};
-        for (int m = 0 ; m<2 ; m++)
-        {
-            for (int n = 0 ; n<2 ; n++)
+        return false;
+    }
+
+    treasure_top++;
+    treasure_stack[treasure_top] = t;
+
+    return true;
+}
+bool pop_treasure(treasure *t)
+{
+    if (is_treasure_stack_empty())
+    {
+        return false;
+    }
+
+    *t = treasure_stack[treasure_top];
+    treasure_top--;
+
+    return true;
+}
+bool peek_treasure(treasure *t)
+{
+    if (is_treasure_stack_empty())
+    {
+        return false;
+    }
+
+    *t = treasure_stack[treasure_top];
+
+    return true;
+}
+bool is_collected_stack_empty(void)
+{
+    return collected_top == -1;
+}
+bool push_collected_treasure(treasure t)
+{
+    if (collected_top == NUM_TREASURES - 1)
+    {
+        return false;
+    }
+
+    collected_top++;
+    collected_treasures[collected_top] = t;
+
+    return true;
+}
+bool pop_collected_treasure(treasure *t)
+{
+    if (is_collected_stack_empty())
+    {
+        return false;
+    }
+
+    *t = collected_treasures[collected_top];
+    collected_top--;
+
+    return true;
+}
+int calculate_distance(location player_loc, location treasure_loc)
+{
+    return abs(player_loc.x - treasure_loc.x)
+         + abs(player_loc.y - treasure_loc.y);
+}
+void update_next_treasure_distance(void)
+{
+    if (is_treasure_stack_empty())
+    {
+        return;
+    }
+
+    treasure_stack[treasure_top].distance =
+        calculate_distance(
+            player_location,
+            treasure_stack[treasure_top].loc
+        );
+}
+bool found_treasure(location player_loc)
+{
+    if (is_treasure_stack_empty())
+    {
+        return false;
+    }
+
+    return player_loc.x == treasure_stack[treasure_top].loc.x &&
+           player_loc.y == treasure_stack[treasure_top].loc.y;
+}
+bool calculate_player_position(char move, location *new_position)
+{
+    location current_position;
+
+    if (!peek_player_position(&current_position))
+    {
+        return false;
+    }
+
+    move = (char)tolower((unsigned char)move);
+
+    *new_position = current_position;
+
+    switch (move)
+    {
+        case 'w':
+            if (current_position.y >= GRID_SIZE - 1)
             {
-                result[m]+=matrix[m][n]*vector[n];
+                return false;
             }
-        }
 
-        temp->treasure.loc.x = result[0];
-        temp->treasure.loc.y = result[1];
-        calculate_and_save_distance(player_loc,position);
-        position++;
-        temp=temp->next;
+            new_position->y++;
+            break;
+
+        case 's':
+            if (current_position.y <= 0)
+            {
+                return false;
+            }
+
+            new_position->y--;
+            break;
+
+        case 'a':
+            if (current_position.x <= 0)
+            {
+                return false;
+            }
+
+            new_position->x--;
+            break;
+
+        case 'd':
+            if (current_position.x >= GRID_SIZE - 1)
+            {
+                return false;
+            }
+
+            new_position->x++;
+            break;
+
+        default:
+            return false;
     }
-};
-int search_treasure(char *name)
-{
-    if (head==NULL)
-    {
-        return -1;
-    }
-    struct Node *iterator_from_head = head;
-    int index_counter_from_head= 0;
-    while (iterator_from_head!=NULL)
-    {
-        if (!(strcmp(iterator_from_head->treasure.name,name)))
-        {
-            return index_counter_from_head;
-        }
-        iterator_from_head=iterator_from_head->next;
-        index_counter_from_head++;
-    }
-    return -1;
+
+    return true;
 }
-void printDetails()
+void collect_treasure(void)
 {
-    if (head==NULL)
+    treasure collected;
+
+    if (pop_treasure(&collected))
     {
-        printf("List is empty.\n");
+        push_collected_treasure(collected);
+
+        printf("\nTreasure collected: %s\n", collected.name);
+    }
+}
+void move_player(void)
+{
+    char move;
+    location new_position;
+    bool found;
+
+    if (!game_started)
+    {
+        printf("Please start the game first.\n");
         return;
     }
-    struct Node *temp = head;
-    while (temp!=NULL)
+
+    printf("Press W/A/S/D to move: ");
+    scanf(" %c", &move);
+
+    if (!calculate_player_position(move, &new_position))
     {
-        printf("Treasure Nme: %s\n",temp->treasure.name);
-        printf("treasure coordinates: (%d,%d)\n",temp->treasure.loc.x,temp->treasure.loc.y);
-        printf("Distamce from you: %d\n",temp->treasure.distance);
-        temp=temp->next;
+        printf("Invalid move. Player cannot move outside the 10x10 grid.\n");
+        return;
     }
 
-}
-int main()
-{
-    int x=0,y=0;
-    char name[50];
-    location player_loc; //to store player location.
-    char menu_ans = 'y';
-    int i = 0; //to track the count of treasure.
-    while (menu_ans=='y')
+    /*
+       Check the NEW position before adding it to history.
+    */
+    found = found_treasure(new_position);
+
+    /*
+       Store whether this particular position collected
+       a treasure. This is what makes Undo possible.
+    */
+    push_player_position(new_position, found);
+
+    player_location = new_position;
+
+    if (found)
     {
-        printf("\t\t\t\t\tTreasure Hunt Game\n");
-        printf("\t\t\t\t\t******************\n");
-        printf("1. Add Treasure.\n");
-        printf("2. Add Bonus treasure.\n");
-        printf("3. Transform player Location.\n");
-        printf("4. Insert new treasure.\n");
-        printf("5. Delete a treasure.\n");
-        printf("6. Search the treasure.\n");
-        printf("7. Display All treasures.\n");
-        int choice;
-        do
+        collect_treasure();
+    }
+
+    update_next_treasure_distance();
+
+    printf("Player moved to (%d,%d)\n",
+           player_location.x,
+           player_location.y);
+}
+void undo_move(void)
+{
+    location undone_position;
+    bool was_collected;
+    treasure restored_treasure;
+
+    if (!game_started)
+    {
+        printf("Please start the game first.\n");
+        return;
+    }
+
+    /*
+       The first node is the starting position.
+       Therefore, if there is only one node,
+       there is nothing to undo.
+    */
+    if (position_top == NULL || position_top->next == NULL)
+    {
+        printf("No move to undo.\n");
+        return;
+    }
+
+    /*
+       Remove the current position.
+    */
+    pop_player_position(&undone_position, &was_collected);
+
+    /*
+       The next node is now the current position.
+    */
+    peek_player_position(&player_location);
+
+    /*
+       If the undone move collected a treasure,
+       restore that treasure.
+
+       Since collected treasures are also a stack,
+       the treasure that was collected most recently
+       must be at the top.
+    */
+    if (was_collected)
+    {
+        if (pop_collected_treasure(&restored_treasure))
         {
-            printf("Enter your choice?: \n");
-            scanf("%d",&choice);
-        }while (choice < 1 || choice > 7);
-        if (choice==1)
+            push_treasure(restored_treasure);
+
+            printf("Treasure dropped: %s\n",
+                   restored_treasure.name);
+        }
+    }
+
+    update_next_treasure_distance();
+
+    printf("Player returned to (%d,%d)\n",
+           player_location.x,
+           player_location.y);
+}
+void display_treasure(treasure t)
+{
+    printf("\n");
+    printf("Name     : %s\n", t.name);
+    printf("Location : (%d,%d)\n", t.loc.x, t.loc.y);
+    printf("Distance : %d\n", t.distance);
+    printf("\n");
+}
+void display_next_treasure(void)
+{
+    treasure next_treasure;
+
+    if (!game_started)
+    {
+        printf("Please start the game first.\n");
+        return;
+    }
+
+    if (!peek_treasure(&next_treasure))
+    {
+        printf("All treasures have been collected!\n");
+        return;
+    }
+
+    update_next_treasure_distance();
+
+    /*
+       Get the updated treasure after calculating distance.
+    */
+    peek_treasure(&next_treasure);
+
+    printf("\n===== NEXT TREASURE =====\n");
+    display_treasure(next_treasure);
+}
+void display_score(void)
+{
+    int score;
+
+    if (!game_started)
+    {
+        printf("Please start the game first.\n");
+        return;
+    }
+
+    score = collected_top + 1;
+
+    printf("\n===== SCORE =====\n");
+    printf("Treasures collected : %d/%d\n",
+           score,
+           NUM_TREASURES);
+
+    if (score == NUM_TREASURES)
+    {
+        printf("All treasures collected!\n");
+    }
+
+    printf("=================\n");
+}
+void display_map(void)
+{
+    if (!game_started)
+    {
+        printf("Please start the game first.\n");
+        return;
+    }
+
+    printf("\n========== MAP ==========\n");
+
+    for (int y = GRID_SIZE - 1; y >= 0; y--)
+    {
+        printf("%d | ", y);
+
+        for (int x = 0; x < GRID_SIZE; x++)
         {
-            char ch1 = 'y';
-            while (ch1=='y')
+            bool player_here =
+                player_location.x == x &&
+                player_location.y == y;
+
+            bool treasure_here = false;
+
+            for (int i = 0; i <= treasure_top; i++)
             {
-                i++;
-                do
+                if (treasure_stack[i].loc.x == x &&
+                    treasure_stack[i].loc.y == y)
                 {
-                    printf("Enter the Value for x for Treasure %d: ",i);
-                    scanf("%d",&x);
-                }while (x<0 || x>9);
-                do
-                {
-                    printf("Enter the Value for y for Treasure %d: ",i);
-                    scanf("%d",&y);
-                }while (y<0 || y>9);
-                printf("Enter the Value for Name for Treasure %d: ",i);
-                scanf("%s",name);
-                location loc={x,y};
-                treasure new_treasure;
-                strcpy(new_treasure.name,name);
-                new_treasure.loc=loc;
-                insert_at_pos(new_treasure,current_size);
-                printf("Do you wish to add more treasures? y/n: ");
-                scanf(" %c",&ch1);
-                if (ch1!='y')
-                {
+                    treasure_here = true;
                     break;
                 }
             }
-            printf("Enter Your Current positon X: \n");
-            scanf("%d", &player_loc.x);
-            printf("Enter Your Current positon Y: \n");
-            scanf("%d", &player_loc.y);
-            for (int j = 0; j<=current_size-1 ; j++) calculate_and_save_distance(&player_loc, j);
-        }
-        else if (choice==2)
-        {
-            treasure bonus_treasure;
-            printf("Enter Name of Bonus treasure: \n");
-            scanf("%s",name);
-            printf("Enter the Value for x for Bonus Treasure: ");
-            scanf("%d",&x);
-            printf("Enter the Value for y for Bonus Treasure: ");
-            scanf("%d",&y);
-            bonus_treasure.loc.x=x;
-            bonus_treasure.loc.y=y;
-            strcpy(bonus_treasure.name,name);
-            add_bonus_treasure(bonus_treasure);
-            calculate_and_save_distance(&player_loc,current_size-1);
-        }
-        else if (choice ==3)
-        {
-            int transform[2][2];
-            for (int i = 0 ; i<2  ;i++)
+
+            if (player_here)
             {
-                for (int j = 0 ; j<2 ; j++)
-                {
-                    printf("Enter the value of matrix at (%d,%d): ",i,j);
-                    scanf("%d",&transform[i][j]);
-                }
+                printf("P ");
             }
-            transform_player_location(transform, &player_loc);
-        }
-        else if (choice ==4)
-        {
-            treasure newTreasure;
-            int new_x, new_y,position;
-            printf("Enter Values for New Treasure: \n");
-            do
+            else if (treasure_here)
             {
-                printf("Enter the Value for x for New Treasure: \n");
-                scanf("%d",&new_x);
-            }while (new_x<0 || new_x>9);
-
-            do
-            {
-                printf("Enter the Value for y for New Treasure: \n");
-                scanf("%d",&new_y);
-
-            }while (new_y<0 || new_y>9);
-
-            printf("Enter the Value for Name for New Treasure: \n");
-            scanf("%s",name);
-
-            newTreasure.loc.x=new_x;
-            newTreasure.loc.y=new_y;
-            strcpy(newTreasure.name,name);
-
-            printf("Enter the position that you want to Insert?: \n");
-            scanf("%d",&position);
-            int actual_position = insert_at_pos(newTreasure, position);
-            if (actual_position != -1) calculate_and_save_distance(&player_loc, actual_position);            }
-        else if (choice == 5){
-            int delPos=0;
-            do
-            {
-                printf("Enter Position of treasure that you want to delete?: \n");
-                scanf("%d",&delPos);
-            }while (delPos<0 || delPos>current_size-1);
-            delete_from_pos(delPos);
-
-        }
-        else if (choice == 6)
-        {
-            char findname[50];
-            printf("Enter the Name of the treasure that you want to search: \n");
-            scanf("%s",findname);
-            int ans = search_treasure(findname);
-            if (ans==-1)
-            {
-                printf("treasure not found!.\n");
+                printf("T ");
             }
             else
             {
-                printf("Treasure found at: %d\n",ans);
+                printf(". ");
             }
         }
-        else if (choice==7)
+
+        printf("\n");
+    }
+
+    printf("    --------------------\n");
+    printf("     0 1 2 3 4 5 6 7 8 9\n");
+
+    printf("\nP = Player\n");
+    printf("T = Remaining Treasure\n");
+    printf(". = Empty\n");
+
+    printf("=========================\n");
+}
+void reset_treasure_stack(void)
+{
+    treasure_top = -1;
+
+    for (int i = 0; i < NUM_TREASURES; i++)
+    {
+        push_treasure(original_treasures[i]);
+    }
+}
+void reset_game(void)
+{
+    clear_position_stack();
+    collected_top = -1;
+    reset_treasure_stack();
+    push_player_position(player_location, false);
+    update_next_treasure_distance();
+    printf("\nGame has been reset.\n");
+    printf("Player returned to starting position (%d,%d).\n",
+           player_location.x,
+           player_location.y);
+}
+int read_coordinate(char coordinate_name)
+{
+    int value;
+
+    do
+    {
+        printf("Enter %c coordinate (0-%d): ",
+               coordinate_name,
+               GRID_SIZE - 1);
+
+        scanf("%d", &value);
+
+        if (value < 0 || value >= GRID_SIZE)
         {
-            printDetails();
+            printf("Invalid coordinate. Enter a value from 0 to %d.\n",
+                   GRID_SIZE - 1);
         }
-        else
+
+    } while (value < 0 || value >= GRID_SIZE);
+
+    return value;
+}
+void start_game(void)
+{
+    int x;
+    int y;
+    if (game_started)
+    {
+        printf("Game has already started.\n");
+        return;
+    }
+    printf("\n========== START GAME ==========\n");
+    for (int i = 0; i < NUM_TREASURES; i++)
+    {
+        printf("\nTreasure %d\n", i + 1);
+
+        x = read_coordinate('X');
+        y = read_coordinate('Y');
+
+        printf("Enter treasure name: ");
+        scanf("%49s", original_treasures[i].name);
+
+        original_treasures[i].loc.x = x;
+        original_treasures[i].loc.y = y;
+        original_treasures[i].distance = 0;
+    }
+    treasure_top = -1;
+
+    for (int i = 0; i < NUM_TREASURES; i++)
+    {
+        push_treasure(original_treasures[i]);
+    }
+    printf("\nEnter starting player position:\n");
+    player_location.x = read_coordinate('X');
+    player_location.y = read_coordinate('Y');
+    clear_position_stack();
+
+    collected_top = -1;
+    bool found = found_treasure(player_location);
+
+    push_player_position(player_location, found);
+
+    if (found)
+    {
+        collect_treasure();
+    }
+    update_next_treasure_distance();
+    game_started = true;
+    printf("\nGame started!\n");
+    printf("Player position: (%d,%d)\n",
+           player_location.x,
+           player_location.y);
+    if (found)
+    {
+        printf("You started on a treasure!\n");
+    }
+
+    printf("================================\n");
+}
+void display_menu(void)
+{
+    printf("\n");
+    printf("\t\t\tTREASURE HUNT GAME\n");
+    printf("\t\t\t******************\n");
+    printf("1. Start Game\n");
+    printf("2. Move Player (W/A/S/D)\n");
+    printf("3. Check Next Treasure\n");
+    printf("4. Undo (Z)\n");
+    printf("5. Reset (R)\n");
+    printf("6. Display Score\n");
+    printf("7. Display Map\n");
+    printf("8. Exit\n");
+    printf("\n");
+}
+int main()
+{
+    int choice;
+
+    while (true)
+    {
+        display_menu();
+
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice)
         {
-            break;
-        }
-        printf("Do you want to continue? y/n : \n");
-        scanf(" %c",&menu_ans);
-        if (menu_ans!='y')
-        {
-            printf("Code Exited.\n");
-            break;
+            case 1:
+                start_game();
+                break;
+
+            case 2:
+                move_player();
+                break;
+
+            case 3:
+                display_next_treasure();
+                break;
+
+            case 4:
+                undo_move();
+                break;
+
+            case 5:
+                if (!game_started)
+                {
+                    printf("Please start the game first.\n");
+                }
+                else
+                {
+                    reset_game();
+                }
+                break;
+
+            case 6:
+                display_score();
+                break;
+
+            case 7:
+                display_map();
+                break;
+
+            case 8:
+                clear_position_stack();
+                printf("Exiting Treasure Hunt. Goodbye!\n");
+                return 0;
+
+            default:
+                printf("Invalid choice. Please enter 1-8.\n");
         }
     }
 }
